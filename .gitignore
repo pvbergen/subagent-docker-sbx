@@ -222,3 +222,5 @@ __marimo__/
 # Claude
 .claudeignore
 Claude.md
+# LangGraph dev server state (prototypes/agent_in_sbx)
+.langgraph_api/
