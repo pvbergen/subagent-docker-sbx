@@ -23,6 +23,15 @@ WORKER_DIR = Path(__file__).parent / "worker"
 SUPERVISOR_MODEL = "openai:gpt-5.5"
 
 
+def _text(content: object) -> str:
+    """Plain text of a message content, which may be a string or a list of content blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(block.get("text", "") for block in content if isinstance(block, dict))
+    return str(content)
+
+
 def check_worker_directly(url: str) -> str:
     """One round trip to the sandboxed worker through the Agent Protocol API."""
     client = get_sync_client(url=url)
@@ -32,7 +41,7 @@ def check_worker_directly(url: str) -> str:
         input={"messages": [{"role": "human", "content": "Reply with exactly: worker-ok"}]},
     )
     messages = state["messages"] if isinstance(state, dict) else []
-    return str(messages[-1]["content"]) if messages else ""
+    return _text(messages[-1]["content"]) if messages else ""
 
 
 def run_supervisor(url: str) -> str:
@@ -55,7 +64,7 @@ def run_supervisor(url: str) -> str:
     result = supervisor.invoke(
         {"messages": [{"role": "user", "content": "Name three prime numbers above 100."}]},
     )
-    return str(result["messages"][-1].content)
+    return _text(result["messages"][-1].content)
 
 
 def main() -> None:

@@ -53,7 +53,7 @@ The first start installs dependencies inside the VM, which takes a minute or two
 | U1 | ✅ `langgraph dev` serves the worker graph inside sbx; deps install from PyPI under the `balanced` policy (macOS, sbx, 2026-10-25) |
 | U2 | ✅ host reaches it on `127.0.0.1:2024`; `sbx ports` shows a loopback-only binding |
 | U3 | ✅ key isolation: every `OPENAI_API_KEY` in the VM is `proxy-managed`, never the host key; ✅ model round trip works with the key injected by the sbx proxy (`sbx secret set openai`) |
-| U4 | ⏳ pending (`run_supervisor.py`) |
+| U4 | ✅ host supervisor delegated through `AsyncSubAgent`: created a thread on the sandboxed worker, started the run, polled it to completion and returned the worker's answer (`101, 103, 107`) |
 | U5 | ✅ host-held `sbx exec` kept the server up for the whole test module; `close()` removes the sandbox and frees the port |
 
 Full module (no model calls): 5 passed, 1 skipped (LLM-gated) in 52.5s, including the dependency install inside the VM.

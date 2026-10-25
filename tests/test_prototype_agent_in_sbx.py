@@ -145,3 +145,12 @@ def test_close_removes_sandbox_and_port() -> None:
     assert name not in run_sbx(["ls", "-q"], timeout=30).stdout.split()
     with pytest.raises((urllib.error.URLError, OSError)):
         urllib.request.urlopen(f"{url}/ok", timeout=5)  # noqa: S310
+
+
+def test_text_extracts_plain_text_from_content_blocks() -> None:
+    from prototypes.agent_in_sbx.run_supervisor import _text
+
+    blocks = [{"type": "text", "text": "101, "}, {"type": "text", "text": "103"}, {"id": "x"}]
+
+    assert _text(blocks) == "101, 103"
+    assert _text("plain") == "plain"
