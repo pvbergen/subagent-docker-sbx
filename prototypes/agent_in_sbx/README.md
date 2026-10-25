@@ -24,6 +24,7 @@ run_supervisor.py                           langgraph dev  (worker/agent.py:grap
 
 ## Files
 
+- `PLAN.md`: status, open questions and the plan for the full design. Start here in a new session.
 - `worker/`: the agent that runs in the sandbox, mounted as the sandbox workspace.
   - `agent.py`: the graph.
   - `langgraph.json`: registers the graph as `worker`.
