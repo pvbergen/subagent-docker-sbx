@@ -1,0 +1,15 @@
+# syntax=docker/sandbox-kit:3
+# U9 probe: deny everything, allow one host. The spec says deny wins, so this is expected to
+# block httpbin.org too; the test records what the runtime actually does.
+schemaVersion: "3"
+displayName: Deny-all allow-one probe
+description: Denies all egress and allows httpbin.org, to check deny precedence.
+kind: mixin
+version: "0.1.0"
+
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow: [httpbin.org]
+        deny: ["**"]

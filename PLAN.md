@@ -1,10 +1,11 @@
 # Plan: every agent of a workflow in its own sbx sandbox
 
-Status: **prototype done (U1–U5 confirmed), full design not started.** Branch: `sbx-prototype`,
-rebased on `main` after PR #1 (the `DockerSBX` backend) was merged.
+Status: **prototype and Phase 1 done (U1–U9 confirmed). Phase 2 (templates) not started.**
+Branch: `subagents-prototype`, rebased on `main` after PR #1 (the `DockerSBX` backend) was merged.
 
 This file is the hand-off for the next working session. Read it together with
-[`README.md`](README.md) in this folder (architecture diagram, how to run, prototype results).
+[`prototypes/agent_in_sbx/README.md`](prototypes/agent_in_sbx/README.md) (architecture diagram,
+how to run, prototype results).
 
 ## Goal
 
@@ -40,7 +41,37 @@ Observations that shape the design:
 | U6 | Can one sandbox reach another sandbox's published port? | From sandbox A: `curl -f http://host.docker.internal:<port>/ok` with B published on `127.0.0.1:<port>`. Probably needs `sbx policy allow network --sandbox A localhost:<port>`. The 403 body explains any block. |
 | U7 | Does `sbx template save` turn a bootstrapped sandbox into a reusable template, so later sandboxes skip the install? | Bootstrap once, `sbx template save`, then `sbx create -t <saved> shell <dir>` and time `/ok`. |
 | U8 | Do per-sandbox secrets work? Set after create: `sbx secret set openai --sandbox <name>`, with no global secret. | Model round trip test (`DEEPAGENTS_SBX_LLM=1`) with only a sandbox-scoped secret. |
-| U9 | Do per-sandbox network rules narrow egress as expected? | `sbx policy allow network --sandbox <name> api.openai.com` plus `--deny-network "**"`. Deny wins over allow, so check whether a deny-all plus a specific allow is possible at all, or whether we rely on the global `balanced` policy plus specific denies. |
+| U9 | Do per-sandbox network rules narrow egress as expected? | Allow rules come from two sources, and both are checked: explicit `sbx policy allow/deny network --sandbox <name> …`, and a v3 kit's `network-policy@1/@2` capability (`--kit ./kits/<probe>` on the v3 workload `docker/sbx-kit-shell:1.0.0`). Deny wins over allow, so check whether a deny-all plus a specific allow is possible at all, or whether we rely on the global `balanced` policy plus specific denies. |
+
+### Phase 1 implementation (done; U6–U9 confirmed)
+
+Consequences for the design (details in the prototype README):
+
+- Supervisor → worker (Phase 4) works through `host.docker.internal:<port>` plus a per-sandbox
+  `localhost:<port>` allow on the supervisor's sandbox only (U6).
+- Templates cut startup and keep the venv (U7); `sbx template rm` needs `y` on stdin.
+- Each agent can get its own secrets via `sbx secret set <service> --sandbox`, no global
+  secret needed (U8).
+- Egress per agent = global policy + per-sandbox denies / allows / GET-only allows, from
+  `sbx policy` or a v3 kit; deny `**` overrides every allow, so no deny-all baseline (U9).
+- Leftovers to clean up after test runs: saved templates, built probe kit images, pending
+  approvals for hosts outside the allow list.
+
+- `tests/test_prototype_isolation.py`: one integration test per check (U6, U7, U8, U9 × explicit
+  and kit), each printing what it saw (`-s`) for the README.
+- `prototypes/agent_in_sbx/probe_sandbox.py`: `ProbeSandbox`, a bare sandbox (no dependency
+  install) with `http()` (curl through the proxy), `policy()` and `set_secret()` helpers.
+- `SandboxedAgentServer` gained `agent=`, `kits=`, `template=` (skips `bootstrap.sh`) and
+  `save_template()`.
+- `prototypes/agent_in_sbx/kits/`: four declaration-only v3 mixins (allow, deny, deny-all +
+  allow, GET-only via `network-policy@2`). They pass the kit-spec JSON schema.
+- v3 mixins only compose onto a v3 workload: the built-in `shell` name selects the v2 kit. So the
+  kit checks use `docker/sbx-kit-shell:1.0.0` (pulled, never pushed), and the explicit-rule
+  checks run on both `shell` and that workload.
+- CLI syntax the docs don't spell out was assumed and must be confirmed on the Mac:
+  `sbx policy allow|deny network --sandbox <name> <resource>`,
+  `sbx secret set <service> --sandbox <name> -t <token>`, `sbx template save|rm`,
+  `sbx create --template <tpl> shell <dir>`, and absolute local paths for `--kit`.
 
 ## Design to build (proposal, needs the user's OK before implementing)
 
@@ -98,6 +129,10 @@ sandboxes, sends the initial request and reads the result. No API key on the hos
   DEEPAGENTS_SBX_INTEGRATION=1 uv run pytest -m sbx tests/test_prototype_agent_in_sbx.py
   DEEPAGENTS_SBX_INTEGRATION=1 DEEPAGENTS_SBX_LLM=1 uv run pytest -m sbx tests/test_prototype_agent_in_sbx.py
   uv run python -m prototypes.agent_in_sbx.run_supervisor
+  # U6, U7, U9 (prints observations):
+  DEEPAGENTS_SBX_INTEGRATION=1 uv run pytest -m sbx tests/test_prototype_isolation.py -v -s
+  # U8, after `sbx secret rm openai` (global) and with OPENAI_API_KEY exported:
+  DEEPAGENTS_SBX_INTEGRATION=1 DEEPAGENTS_SBX_SCOPED_SECRET=1 uv run pytest -m sbx tests/test_prototype_isolation.py -k u8 -v -s
   ```
 - **Shared `.venv`:** the repo folder is mounted from the Mac. Inside the Claude Code sandbox,
   run uv with `UV_PROJECT_ENVIRONMENT=/tmp/deepagents-sbx-venv` so it doesn't overwrite the

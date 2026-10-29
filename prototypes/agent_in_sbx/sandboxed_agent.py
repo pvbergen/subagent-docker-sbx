@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 import uuid
 import weakref
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 
@@ -46,18 +46,45 @@ _READY_POLL_INTERVAL = 1.0
 _LOG_TAIL_BYTES = 4000
 
 
-def build_create_args(name: str, worker_dir: Path, host_port: int) -> list[str]:
-    """`sbx create` args: shell sandbox, worker dir as workspace, port on host loopback only."""
-    return [
+def kit_args(kits: Sequence[str | Path]) -> list[str]:
+    """One `--kit` per kit. Local kit directories are passed as absolute paths."""
+    args: list[str] = []
+    for kit in kits:
+        args += ["--kit", str(kit.resolve()) if isinstance(kit, Path) else kit]
+    return args
+
+
+def build_create_args(
+    name: str,
+    worker_dir: Path,
+    host_port: int,
+    *,
+    agent: str = SANDBOX_AGENT,
+    kits: Sequence[str | Path] = (),
+    template: str | None = None,
+) -> list[str]:
+    """`sbx create` args: worker dir as workspace, port on host loopback only.
+
+    `agent` is a built-in agent name or a v3 workload reference; `template` is a local image
+    saved with `sbx template save`.
+    """
+    args = [
         "create",
         "--name",
         name,
         "--no-progress",
         "--publish",
         f"127.0.0.1:{host_port}:{SANDBOX_PORT}",
-        SANDBOX_AGENT,
-        str(worker_dir),
+        *kit_args(kits),
     ]
+    if template is not None:
+        args += ["--template", template]
+    return [*args, agent, str(worker_dir)]
+
+
+def build_template_save_args(name: str, template: str) -> list[str]:
+    """`sbx template save` args. The template stays in the local image store."""
+    return ["template", "save", name, template]
 
 
 def build_install_args(name: str, worker_dir: Path) -> list[str]:
@@ -103,6 +130,9 @@ class SandboxedAgentServer:
         *,
         host_port: int = SANDBOX_PORT,
         ready_timeout: float = READY_TIMEOUT,
+        agent: str = SANDBOX_AGENT,
+        kits: Sequence[str | Path] = (),
+        template: str | None = None,
     ) -> None:
         self._worker_dir = Path(worker_dir).resolve()
         if not (self._worker_dir / "langgraph.json").is_file():
@@ -110,6 +140,10 @@ class SandboxedAgentServer:
             raise ValueError(msg)
         self._host_port = host_port
         self._ready_timeout = ready_timeout
+        self._agent = agent
+        self._kits = tuple(kits)
+        # A saved template already holds the venv, so bootstrap.sh is skipped.
+        self._template = template
         self._name = f"deepagents-agent-{uuid.uuid4().hex[:12]}"
         self._log_path = Path(tempfile.mkstemp(prefix=f"{self._name}-", suffix=".log")[1])
         self._process: subprocess.Popen[bytes] | None = None
@@ -120,7 +154,8 @@ class SandboxedAgentServer:
         atexit.register(self._atexit_hook)
         try:
             self._create()
-            self._install()
+            if self._template is None:
+                self._install()
             self._serve()
             self._wait_until_ready()
         except BaseException:
@@ -154,7 +189,14 @@ class SandboxedAgentServer:
             msg = f"sbx is not available ({reason})"
             raise SBXError(msg)
         logger.info("creating sandbox %s for %s", self._name, self._worker_dir)
-        args = build_create_args(self._name, self._worker_dir, self._host_port)
+        args = build_create_args(
+            self._name,
+            self._worker_dir,
+            self._host_port,
+            agent=self._agent,
+            kits=self._kits,
+            template=self._template,
+        )
         self._run(args, timeout=CREATE_TIMEOUT, what="sbx create")
 
     def _install(self) -> None:
@@ -199,13 +241,18 @@ class SandboxedAgentServer:
             return ""
         return data[-_LOG_TAIL_BYTES:].decode("utf-8", errors="replace")
 
-    def close(self) -> None:
-        """Stop the server and remove the sandbox."""
-        if self._closed:
-            return
-        self._closed = True
-        if self._atexit_hook is not None:
-            atexit.unregister(self._atexit_hook)
+    def save_template(self, template: str) -> None:
+        """Stop the server and the sandbox, then save the sandbox as a local template.
+
+        The template holds the VM filesystem, including the venv from `bootstrap.sh`, but not
+        the mounted workspace. The sandbox stays stopped until `close()` removes it.
+        """
+        self._stop_server()
+        self._run(["stop", self._name], timeout=CLEANUP_TIMEOUT, what="sbx stop")
+        args = build_template_save_args(self._name, template)
+        self._run(args, timeout=CREATE_TIMEOUT, what="sbx template save")
+
+    def _stop_server(self) -> None:
         if self._process is not None and self._process.poll() is None:
             self._process.terminate()
             try:
@@ -213,6 +260,15 @@ class SandboxedAgentServer:
             except subprocess.TimeoutExpired:
                 self._process.kill()
                 self._process.wait()
+
+    def close(self) -> None:
+        """Stop the server and remove the sandbox."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._atexit_hook is not None:
+            atexit.unregister(self._atexit_hook)
+        self._stop_server()
         try:
             run_sbx(["rm", "--force", self._name], timeout=CLEANUP_TIMEOUT)
         except SBXError:

@@ -1,0 +1,16 @@
+# syntax=docker/sandbox-kit:3
+# U9 probe: a bounded allow rule (network-policy@2). Only GET to httpbin.org is granted, so a
+# POST to the same host must be refused with 403 at the proxy.
+schemaVersion: "3"
+displayName: GET-only probe
+description: Allows only GET requests to httpbin.org, to check request-level egress rules.
+kind: mixin
+version: "0.1.0"
+
+capabilities:
+  - type: com.docker.sandbox/network-policy@2
+    config:
+      runtime:
+        allow:
+          - hosts: [httpbin.org]
+            methods: [GET]

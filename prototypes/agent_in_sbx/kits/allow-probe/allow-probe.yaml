@@ -1,0 +1,14 @@
+# syntax=docker/sandbox-kit:3
+# U9 probe: a kit-declared allow rule. The test first checks that httpbin.org is refused without
+# this kit (403), then that a sandbox with it gets through.
+schemaVersion: "3"
+displayName: Allow probe
+description: Allows httpbin.org at runtime, to check that kit allow rules widen egress.
+kind: mixin
+version: "0.1.0"
+
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow: [httpbin.org]
