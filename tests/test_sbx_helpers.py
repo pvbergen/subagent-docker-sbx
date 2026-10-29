@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from deepagents_docker_sbx._sbx import (
+from subagents_docker_sbx._sbx import (
     SBX_BINARY,
     SBXRunResult,
     format_sbx_error,
@@ -11,7 +11,7 @@ from deepagents_docker_sbx._sbx import (
     sbx_available,
     sbx_unavailable_reason,
 )
-from deepagents_docker_sbx.errors import SBXError
+from subagents_docker_sbx.errors import SBXError
 
 
 def test_format_sbx_error_returns_plain_stderr() -> None:
@@ -39,26 +39,26 @@ def test_format_sbx_error_falls_back_to_exit_code() -> None:
     assert format_sbx_error(result) == "exit code 7"
 
 
-@patch("deepagents_docker_sbx._sbx.run_sbx")
+@patch("subagents_docker_sbx._sbx.run_sbx")
 def test_sbx_available_true_when_ls_succeeds(run_sbx: MagicMock) -> None:
     run_sbx.return_value = SBXRunResult(returncode=0, stdout="my-sandbox\n", stderr="")
     assert sbx_available() is True
 
 
-@patch("deepagents_docker_sbx._sbx.run_sbx")
+@patch("subagents_docker_sbx._sbx.run_sbx")
 def test_sbx_available_false_when_ls_fails(run_sbx: MagicMock) -> None:
     run_sbx.return_value = SBXRunResult(returncode=1, stdout="", stderr="daemon down")
     assert sbx_available() is False
 
 
-@patch("deepagents_docker_sbx._sbx.run_sbx")
+@patch("subagents_docker_sbx._sbx.run_sbx")
 def test_sbx_available_probes_with_ls(run_sbx: MagicMock) -> None:
     run_sbx.return_value = SBXRunResult(returncode=0, stdout="", stderr="")
     sbx_available(timeout=3)
     run_sbx.assert_called_once_with(["ls", "-q"], timeout=3)
 
 
-@patch("deepagents_docker_sbx._sbx.run_sbx")
+@patch("subagents_docker_sbx._sbx.run_sbx")
 def test_sbx_unavailable_reason_reports_login_error(run_sbx: MagicMock) -> None:
     run_sbx.return_value = SBXRunResult(
         returncode=1,
@@ -70,19 +70,19 @@ def test_sbx_unavailable_reason_reports_login_error(run_sbx: MagicMock) -> None:
     assert "not signed in" in reason
 
 
-@patch("deepagents_docker_sbx._sbx.run_sbx")
+@patch("subagents_docker_sbx._sbx.run_sbx")
 def test_sbx_unavailable_reason_reports_missing_binary(run_sbx: MagicMock) -> None:
     run_sbx.side_effect = SBXError("sbx executable not found on PATH")
     assert sbx_unavailable_reason() == "sbx executable not found on PATH"
 
 
-@patch("deepagents_docker_sbx._sbx.run_sbx")
+@patch("subagents_docker_sbx._sbx.run_sbx")
 def test_sbx_unavailable_reason_is_none_when_ready(run_sbx: MagicMock) -> None:
     run_sbx.return_value = SBXRunResult(returncode=0, stdout="", stderr="")
     assert sbx_unavailable_reason() is None
 
 
-@patch("deepagents_docker_sbx._sbx.subprocess.run")
+@patch("subagents_docker_sbx._sbx.subprocess.run")
 def test_run_sbx_invokes_sbx_binary(subprocess_run: MagicMock) -> None:
     completed = MagicMock()
     completed.returncode = 0
@@ -96,7 +96,7 @@ def test_run_sbx_invokes_sbx_binary(subprocess_run: MagicMock) -> None:
     assert SBX_BINARY == "sbx"
 
 
-@patch("deepagents_docker_sbx._sbx.subprocess.run")
+@patch("subagents_docker_sbx._sbx.subprocess.run")
 def test_run_sbx_returns_captured_output(subprocess_run: MagicMock) -> None:
     completed = MagicMock()
     completed.returncode = 0
@@ -110,7 +110,7 @@ def test_run_sbx_returns_captured_output(subprocess_run: MagicMock) -> None:
     subprocess_run.assert_called_once()
 
 
-@patch("deepagents_docker_sbx._sbx.subprocess.run")
+@patch("subagents_docker_sbx._sbx.subprocess.run")
 def test_run_sbx_raises_on_timeout(subprocess_run: MagicMock) -> None:
     subprocess_run.side_effect = subprocess.TimeoutExpired(cmd="sbx", timeout=5)
 
@@ -118,7 +118,7 @@ def test_run_sbx_raises_on_timeout(subprocess_run: MagicMock) -> None:
         run_sbx(["exec", "cid", "true"], timeout=5)
 
 
-@patch("deepagents_docker_sbx._sbx.subprocess.run")
+@patch("subagents_docker_sbx._sbx.subprocess.run")
 def test_run_sbx_raises_when_sbx_missing(subprocess_run: MagicMock) -> None:
     subprocess_run.side_effect = FileNotFoundError
 
@@ -131,7 +131,7 @@ def _fake_sbx_script(body: str) -> list[str]:
     return ["-c", body]
 
 
-@patch("deepagents_docker_sbx._sbx.subprocess.Popen")
+@patch("subagents_docker_sbx._sbx.subprocess.Popen")
 def test_run_sbx_capped_raises_when_sbx_missing(popen: MagicMock) -> None:
     popen.side_effect = FileNotFoundError
 
@@ -141,7 +141,7 @@ def test_run_sbx_capped_raises_when_sbx_missing(popen: MagicMock) -> None:
 
 def test_run_sbx_capped_returns_output(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "deepagents_docker_sbx._sbx.subprocess.Popen",
+        "subagents_docker_sbx._sbx.subprocess.Popen",
         _popen_shim(["sh", "-c", "printf hello; printf oops >&2"]),
     )
 
@@ -158,7 +158,7 @@ def test_run_sbx_capped_kills_process_on_unbounded_output(
 ) -> None:
     # `yes` writes forever; the cap must stop us long before the host buffers it all.
     monkeypatch.setattr(
-        "deepagents_docker_sbx._sbx.subprocess.Popen",
+        "subagents_docker_sbx._sbx.subprocess.Popen",
         _popen_shim(["sh", "-c", "yes aaaaaaaaaaaaaaaa"]),
     )
 
@@ -171,7 +171,7 @@ def test_run_sbx_capped_kills_process_on_unbounded_output(
 
 def test_run_sbx_capped_forwards_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "deepagents_docker_sbx._sbx.subprocess.Popen",
+        "subagents_docker_sbx._sbx.subprocess.Popen",
         _popen_shim(["sh", "-c", "cat"]),
     )
 
@@ -182,7 +182,7 @@ def test_run_sbx_capped_forwards_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_run_sbx_capped_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "deepagents_docker_sbx._sbx.subprocess.Popen",
+        "subagents_docker_sbx._sbx.subprocess.Popen",
         _popen_shim(["sh", "-c", "sleep 30"]),
     )
 

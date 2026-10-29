@@ -1,0 +1,6 @@
+# Keep local state and secrets out of images built with docker/worker.Dockerfile.
+.langgraph_api/
+__pycache__/
+*.pyc
+.env
+.env.*
