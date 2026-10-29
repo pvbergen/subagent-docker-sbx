@@ -38,8 +38,8 @@ integration = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/pvbergen/deepagents-docker-sbx"
-Repository = "https://github.com/pvbergen/deepagents-docker-sbx"
+Homepage = "https://github.com/pvbergen/subagent-docker-sbx"
+Repository = "https://github.com/pvbergen/subagent-docker-sbx"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/subagents_docker_sbx"]

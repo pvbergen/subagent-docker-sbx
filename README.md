@@ -138,8 +138,8 @@ Rebuild the image when `requirements.txt` changes, and for `worker_dir=None` als
 ## Development
 
 ```bash
-git clone https://github.com/pvbergen/deepagents-docker-sbx.git
-cd deepagents-docker-sbx
+git clone https://github.com/pvbergen/subagent-docker-sbx.git
+cd subagent-docker-sbx
 uv sync --group integration
 uv run pytest                                                   # unit tests (sbx is mocked)
 SUBAGENTS_SBX_INTEGRATION=1 uv run pytest -m sbx                # real sandboxes
