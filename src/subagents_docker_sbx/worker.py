@@ -25,14 +25,13 @@ from typing import Literal
 
 from deepagents import AsyncSubAgent
 
-from deepagents_docker_sbx._sbx import (
+from ._sbx import (
     SBX_BINARY,
     format_sbx_error,
     run_sbx,
     sbx_unavailable_reason,
 )
-from deepagents_docker_sbx.errors import SBXError
-
+from .errors import SBXError
 from .requirements import INSTALL_SCRIPT, VENV_DIR, WORKER_REQUIREMENTS
 from .spec import WorkerSpec
 

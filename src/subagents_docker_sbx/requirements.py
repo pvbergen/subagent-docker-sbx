@@ -11,8 +11,9 @@ the worker's graph, so its image or template must provide:
   ``/bin/sh`` and ``/bin/bash``, curl, git and CA certificates.
 
 Without a template, `SandboxedWorker` installs the venv on every start with `INSTALL_SCRIPT`. A
-template (``WorkerSpec.template``) that already contains the venv skips that step; an image that
-extends any base with the items above can serve as one.
+template (``WorkerSpec.template``) that already contains the venv skips that step.
+``docker/worker.Dockerfile`` builds one from any Debian- or Ubuntu-based image; keep it in sync
+with this module (a unit test checks the requirements and venv path).
 """
 
 VENV_DIR = "/home/agent/venv"

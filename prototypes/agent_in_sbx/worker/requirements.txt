@@ -1,3 +1,0 @@
-deepagents==0.6.7
-langchain-openai==1.7.2
-langgraph-cli[inmem]==0.4.38

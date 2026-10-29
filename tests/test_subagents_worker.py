@@ -1,11 +1,14 @@
 """Tests for `subagents_docker_sbx`: a worker agent served from its own sbx sandbox.
 
 The unit tests mock sbx. The integration tests boot a real sandbox and only run when opted in
-with ``DEEPAGENTS_SBX_INTEGRATION=1``; the supervisor round trip additionally needs
-``DEEPAGENTS_SBX_LLM=1`` and ``OPENAI_API_KEY`` on the host (stored as a sandbox-scoped secret).
+with ``SUBAGENTS_SBX_INTEGRATION=1``; the supervisor round trip additionally needs
+``SUBAGENTS_SBX_LLM=1`` and ``OPENAI_API_KEY`` on the host (stored as a sandbox-scoped secret).
+``SUBAGENTS_SBX_TEMPLATE=<ref>`` also starts a worker from a template built with
+``docker/worker.Dockerfile`` and loaded into sbx.
 """
 
 import os
+import re
 import urllib.request
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -13,8 +16,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from deepagents_docker_sbx._sbx import SBXRunResult, run_sbx, sbx_unavailable_reason
 from subagents_docker_sbx import WORKER_REQUIREMENTS, SandboxedWorker, SBXError, WorkerSpec
+from subagents_docker_sbx._sbx import SBXRunResult, run_sbx, sbx_unavailable_reason
 from subagents_docker_sbx.requirements import VENV_DIR
 from subagents_docker_sbx.worker import (
     PROXY_MANAGED_VALUE,
@@ -25,6 +28,7 @@ from subagents_docker_sbx.worker import (
 )
 
 WORKER_DIR = Path(__file__).resolve().parent / "workers" / "basic"
+DOCKERFILE = Path(__file__).resolve().parent.parent / "docker" / "worker.Dockerfile"
 
 
 def _spec(**overrides: object) -> WorkerSpec:
@@ -113,6 +117,16 @@ def test_worker_requirements_include_langgraph_dev_runtime() -> None:
     names = {req.split(">")[0].split("=")[0] for req in WORKER_REQUIREMENTS}
 
     assert names == {"deepagents", "langgraph-cli[inmem]"}
+
+
+def test_dockerfile_installs_worker_requirements_into_the_venv() -> None:
+    text = DOCKERFILE.read_text()
+    requirements = re.search(r'^ARG WORKER_REQUIREMENTS="([^"]*)"$', text, re.MULTILINE)
+
+    assert requirements is not None
+    assert tuple(requirements.group(1).split()) == WORKER_REQUIREMENTS
+    assert f'uv venv --python "$python" {VENV_DIR}' in text
+    assert f"--python {VENV_DIR}/bin/python ${{WORKER_REQUIREMENTS}}" in text
 
 
 # --- lifecycle (sbx mocked) ------------------------------------------------------------------
@@ -221,8 +235,8 @@ def test_sandbox_name_is_derived_from_worker_name(sbx: MagicMock) -> None:
 
 
 def _skip_reason() -> str | None:
-    if os.environ.get("DEEPAGENTS_SBX_INTEGRATION") != "1":
-        return "set DEEPAGENTS_SBX_INTEGRATION=1 to run sbx integration tests"
+    if os.environ.get("SUBAGENTS_SBX_INTEGRATION") != "1":
+        return "set SUBAGENTS_SBX_INTEGRATION=1 to run sbx integration tests"
     reason = sbx_unavailable_reason(timeout=30)
     if reason is not None:
         return f"sbx is not available: {reason}"
@@ -275,15 +289,15 @@ def test_worker_port_is_published_on_host_loopback_only(worker: SandboxedWorker)
 
 @integration
 @pytest.mark.skipif(
-    os.environ.get("DEEPAGENTS_SBX_LLM") != "1" or not os.environ.get("OPENAI_API_KEY"),
-    reason="set DEEPAGENTS_SBX_LLM=1 and OPENAI_API_KEY to call the model",
+    os.environ.get("SUBAGENTS_SBX_LLM") != "1" or not os.environ.get("OPENAI_API_KEY"),
+    reason="set SUBAGENTS_SBX_LLM=1 and OPENAI_API_KEY to call the model",
 )
 def test_host_supervisor_delegates_to_sandboxed_worker(worker: SandboxedWorker) -> None:
     # The supervisor's model runs on the host, so its provider package must be installed there
     # too (the worker's runs in the sandbox, from the worker's requirements.txt).
     pytest.importorskip(
         "langchain_openai",
-        reason="the host-side supervisor needs langchain-openai: uv sync --group prototype",
+        reason="the host-side supervisor needs langchain-openai: uv sync --group integration",
     )
     from deepagents import create_deep_agent
 
@@ -302,3 +316,16 @@ def test_host_supervisor_delegates_to_sandboxed_worker(worker: SandboxedWorker) 
     print(f"supervisor -> {answer}")
 
     assert answer
+
+
+@integration
+@pytest.mark.skipif(
+    not os.environ.get("SUBAGENTS_SBX_TEMPLATE"),
+    reason="set SUBAGENTS_SBX_TEMPLATE to a template built from docker/worker.Dockerfile",
+)
+def test_worker_starts_from_dockerfile_template() -> None:
+    template = os.environ["SUBAGENTS_SBX_TEMPLATE"]
+
+    with SandboxedWorker(_spec(template=template)) as templated:
+        with urllib.request.urlopen(f"{templated.url}/ok", timeout=10) as response:  # noqa: S310
+            assert response.status == 200
