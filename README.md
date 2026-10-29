@@ -103,6 +103,42 @@ with DockerSBX() as backend:
 # Sandbox removed here.
 ```
 
+## Sandboxed subagents (experimental)
+
+`subagents_docker_sbx` goes one step further: a **whole worker agent** runs inside its own sbx
+sandbox (model calls, tools, files), served by `langgraph dev`. A supervisor on the host
+delegates to it through deepagents' `AsyncSubAgent` over a port published on `127.0.0.1` only.
+API keys never enter the VM: each one is stored as a secret for that sandbox alone, and the sbx
+proxy injects it into outgoing requests.
+
+```python
+from deepagents import create_deep_agent
+from subagents_docker_sbx import SandboxedWorker, WorkerSpec
+
+spec = WorkerSpec(
+    name="researcher",
+    description="Researches a topic in an isolated sandbox.",
+    worker_dir="workers/researcher",        # langgraph.json (+ optional requirements.txt)
+    graph_id="researcher",
+    secrets={"openai": "OPENAI_API_KEY"},  # sbx service -> host env var, scoped to this sandbox
+    allow_network=["api.tavily.com"],       # per-sandbox egress rules on top of `sbx policy`
+    deny_network=[],                        # deny wins over any allow
+)
+
+with SandboxedWorker(spec) as worker:
+    supervisor = create_deep_agent(model="openai:gpt-5.5", subagents=[worker.subagent()])
+    supervisor.invoke({"messages": "Research the latest trends in AI."})
+```
+
+A worker needs inside its VM (listed in `subagents_docker_sbx/requirements.py`):
+
+- Python >= 3.11 and `uv`
+- a venv at `/home/agent/venv` with `deepagents` and `langgraph-cli[inmem]` (`WORKER_REQUIREMENTS`)
+- the worker's own `requirements.txt`, typically the model provider (for example `langchain-openai`)
+
+Without `template=`, these are installed on every start. A template that already contains the
+venv (`WorkerSpec(template=...)`) skips the install.
+
 ## Examples
 
 Prerequisites:

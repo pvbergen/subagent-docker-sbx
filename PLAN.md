@@ -1,6 +1,7 @@
 # Plan: every agent of a workflow in its own sbx sandbox
 
-Status: **prototype and Phase 1 done (U1–U9 confirmed). Phase 2 (templates) not started.**
+Status: **prototype and Phase 1 done (U1–U9 confirmed). Minimal package in progress:
+`src/subagents_docker_sbx` runs workers in sandboxes, the supervisor stays on the host.**
 Branch: `subagents-prototype`, rebased on `main` after PR #1 (the `DockerSBX` backend) was merged.
 
 This file is the hand-off for the next working session. Read it together with
@@ -72,6 +73,20 @@ Consequences for the design (details in the prototype README):
   `sbx policy allow|deny network --sandbox <name> <resource>`,
   `sbx secret set <service> --sandbox <name> -t <token>`, `sbx template save|rm`,
   `sbx create --template <tpl> shell <dir>`, and absolute local paths for `--kit`.
+
+## Minimal package (in progress)
+
+`src/subagents_docker_sbx`: `WorkerSpec` (worker dir, graph, scoped secrets, per-sandbox
+allow/deny rules, kits, template, memory/cpus, host port) and `SandboxedWorker` (create →
+scoped secrets → network rules → install unless templated → `langgraph dev` → `/ok`;
+`subagent()` returns the `AsyncSubAgent`). The supervisor stays on the host. Worker dependencies
+live in one place, `subagents_docker_sbx/requirements.py`, so the planned example Dockerfile
+(extend any image into a worker template) installs exactly that list. Tests:
+`tests/test_subagents_worker.py` (unit with sbx mocked; integration opt-in), test worker in
+`tests/workers/basic/`.
+
+Next: run the integration tests on the sbx host; example Dockerfile; then cleanup before
+pushing (remove `prototypes/` once the package covers it, delete leftover templates/kit images).
 
 ## Design to build (proposal, needs the user's OK before implementing)
 

@@ -42,7 +42,7 @@ Homepage = "https://github.com/pvbergen/deepagents-docker-sbx"
 Repository = "https://github.com/pvbergen/deepagents-docker-sbx"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/deepagents_docker_sbx"]
+packages = ["src/deepagents_docker_sbx", "src/subagents_docker_sbx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
