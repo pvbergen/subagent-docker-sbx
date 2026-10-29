@@ -58,7 +58,7 @@ def free_port() -> int:
 
 
 def build_create_args(spec: WorkerSpec, name: str, host_port: int) -> list[str]:
-    """`sbx create` args: worker dir as workspace, port on host loopback only."""
+    """`sbx create` args: worker dir as workspace (if any), port on host loopback only."""
     args = [
         "create",
         "--name",
@@ -75,7 +75,9 @@ def build_create_args(spec: WorkerSpec, name: str, host_port: int) -> list[str]:
         args += ["--cpus", str(spec.cpus)]
     for kit in spec.kits:
         args += ["--kit", str(kit.resolve()) if isinstance(kit, Path) else kit]
-    return [*args, spec.agent, str(spec.path)]
+    args.append(spec.agent)
+    # No workspace argument: nothing from the host is mounted, the code is in the template.
+    return args if spec.path is None else [*args, str(spec.path)]
 
 
 def build_secret_args(service: str, name: str, value: str) -> list[str]:
@@ -93,7 +95,7 @@ def build_install_args(spec: WorkerSpec, name: str) -> list[str]:
     return [
         "exec",
         "--workdir",
-        str(spec.path),
+        spec.workdir,
         name,
         "sh",
         "-c",
@@ -120,7 +122,7 @@ def build_serve_args(spec: WorkerSpec, name: str) -> list[str]:
         "exec",
         *env_args,
         "--workdir",
-        str(spec.path),
+        spec.workdir,
         name,
         f"{VENV_DIR}/bin/langgraph",
         "dev",

@@ -11,12 +11,16 @@ the worker's graph, so its image or template must provide:
   ``/bin/sh`` and ``/bin/bash``, curl, git and CA certificates.
 
 Without a template, `SandboxedWorker` installs the venv on every start with `INSTALL_SCRIPT`. A
-template (``WorkerSpec.template``) that already contains the venv skips that step.
+template (``WorkerSpec.template``) that already contains the venv skips that step. A template
+that also contains the worker's code at ``WORKER_CODE_DIR`` can run with ``worker_dir=None``, so
+nothing from the host is mounted into the sandbox.
 ``docker/worker.Dockerfile`` builds one from any Debian- or Ubuntu-based image; keep it in sync
-with this module (a unit test checks the requirements and venv path).
+with this module (a unit test checks the requirements and paths).
 """
 
 VENV_DIR = "/home/agent/venv"
+# Where a template carries the worker's code (langgraph.json and its graph modules).
+WORKER_CODE_DIR = "/home/agent/worker"
 
 WORKER_REQUIREMENTS: tuple[str, ...] = (
     "deepagents>=0.6.7",

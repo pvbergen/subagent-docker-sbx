@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 # Turns a Debian- or Ubuntu-based image into an sbx template for a subagents-docker-sbx worker,
-# so `WorkerSpec(template=...)` starts without installing anything.
+# so `WorkerSpec(template=...)` starts without installing anything. The image also carries the
+# worker's code at /home/agent/worker, so `WorkerSpec(worker_dir=None, template=...)` runs it
+# without mounting anything from the host. Add a .dockerignore to the worker directory to keep
+# files such as .env or .langgraph_api/ out of the image.
 #
 # Build with the worker directory (langgraph.json, optional requirements.txt) as context:
 #
@@ -12,7 +15,7 @@
 #   docker save my-worker:1 -o my-worker.tar && sbx template load my-worker.tar
 #
 # What a worker needs is defined in src/subagents_docker_sbx/requirements.py; keep the venv
-# path and WORKER_REQUIREMENTS below in sync with it (a unit test checks this).
+# path, the code path and WORKER_REQUIREMENTS below in sync with it (a unit test checks this).
 
 ARG BASE_IMAGE=python:3.12-slim-bookworm
 
@@ -64,3 +67,7 @@ RUN if [ -f /tmp/worker/requirements.txt ]; then \
         uv pip install --no-cache --python /home/agent/venv/bin/python -r /tmp/worker/requirements.txt; \
     fi \
     && rm -rf /tmp/worker
+
+# The worker's code, last so that code changes rebuild only this layer. When a worker directory
+# is mounted instead, it appears at its host path and this copy is unused.
+COPY --chown=agent:agent . /home/agent/worker

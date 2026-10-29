@@ -18,7 +18,7 @@ import pytest
 
 from subagents_docker_sbx import WORKER_REQUIREMENTS, SandboxedWorker, SBXError, WorkerSpec
 from subagents_docker_sbx._sbx import SBXRunResult, run_sbx, sbx_unavailable_reason
-from subagents_docker_sbx.requirements import VENV_DIR
+from subagents_docker_sbx.requirements import VENV_DIR, WORKER_CODE_DIR
 from subagents_docker_sbx.worker import (
     PROXY_MANAGED_VALUE,
     SANDBOX_PORT,
@@ -64,6 +64,18 @@ def test_spec_rejects_empty_name() -> None:
         _spec(name=" ")
 
 
+def test_spec_without_worker_dir_needs_a_template() -> None:
+    with pytest.raises(ValueError, match="needs a template"):
+        _spec(worker_dir=None)
+
+
+def test_spec_without_worker_dir_serves_code_from_the_image() -> None:
+    spec = _spec(worker_dir=None, template="tpl:v1", graph_id="anything")
+
+    assert spec.path is None
+    assert spec.workdir == WORKER_CODE_DIR
+
+
 def test_spec_rejects_env_that_overrides_a_secret_variable() -> None:
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):
         _spec(secrets={"openai": "OPENAI_API_KEY"}, env={"OPENAI_API_KEY": "sk-real"})
@@ -92,6 +104,19 @@ def test_create_args_leave_defaults_to_sbx() -> None:
 
     for flag in ("--template", "--memory", "--cpus", "--kit"):
         assert flag not in args
+
+
+def test_create_args_without_worker_dir_mount_nothing() -> None:
+    args = build_create_args(_spec(worker_dir=None, template="tpl:v1"), "sb", 8123)
+
+    assert args[-1] == "shell"
+    assert args[args.index("--template") + 1] == "tpl:v1"
+
+
+def test_serve_args_without_worker_dir_use_the_code_in_the_image() -> None:
+    args = build_serve_args(_spec(worker_dir=None, template="tpl:v1"), "sb")
+
+    assert args[args.index("--workdir") + 1] == WORKER_CODE_DIR
 
 
 def test_install_args_install_worker_requirements_into_venv() -> None:
@@ -127,6 +152,12 @@ def test_dockerfile_installs_worker_requirements_into_the_venv() -> None:
     assert tuple(requirements.group(1).split()) == WORKER_REQUIREMENTS
     assert f'uv venv --python "$python" {VENV_DIR}' in text
     assert f"--python {VENV_DIR}/bin/python ${{WORKER_REQUIREMENTS}}" in text
+
+
+def test_dockerfile_copies_the_worker_code_into_the_image() -> None:
+    lines = DOCKERFILE.read_text().splitlines()
+
+    assert f"COPY --chown=agent:agent . {WORKER_CODE_DIR}" in lines
 
 
 # --- lifecycle (sbx mocked) ------------------------------------------------------------------
@@ -172,6 +203,15 @@ def test_start_order_create_secrets_rules_install(
     assert commands[2] == ["policy", "allow", "network", "--sandbox", worker.name, "api.tavily.com"]
     assert commands[3] == ["policy", "deny", "network", "--sandbox", worker.name, "pypi.org"]
     assert commands[-1] == ["rm", "--force", worker.name]
+
+
+def test_worker_without_worker_dir_never_installs(sbx: MagicMock) -> None:
+    with SandboxedWorker(_spec(worker_dir=None, template="tpl:v1")):
+        pass
+    commands = _commands(sbx)
+
+    assert commands[0][-1] == "shell"
+    assert not [c for c in commands if c[0] == "exec"]
 
 
 def test_template_skips_install(sbx: MagicMock) -> None:
@@ -329,3 +369,21 @@ def test_worker_starts_from_dockerfile_template() -> None:
     with SandboxedWorker(_spec(template=template)) as templated:
         with urllib.request.urlopen(f"{templated.url}/ok", timeout=10) as response:  # noqa: S310
             assert response.status == 200
+
+
+@integration
+@pytest.mark.skipif(
+    not os.environ.get("SUBAGENTS_SBX_TEMPLATE"),
+    reason="set SUBAGENTS_SBX_TEMPLATE to a template built from docker/worker.Dockerfile",
+)
+def test_worker_runs_from_template_without_a_host_directory() -> None:
+    from langgraph_sdk import get_sync_client
+
+    template = os.environ["SUBAGENTS_SBX_TEMPLATE"]
+
+    with SandboxedWorker(_spec(worker_dir=None, template=template)) as imaged:
+        assistants = get_sync_client(url=imaged.url).assistants.search()
+        listing = run_sbx(["ls"], timeout=30).stdout
+        print(f"sbx ls with an unmounted worker:\n{listing}")
+
+        assert "worker" in {assistant["graph_id"] for assistant in assistants}

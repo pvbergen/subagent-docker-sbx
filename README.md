@@ -64,8 +64,9 @@ The supervisor's model runs on the host, so the host needs that model's provider
 WorkerSpec(
     name="researcher",                  # subagent name the supervisor delegates to
     description="...",                  # the supervisor's model reads this to pick a worker
-    worker_dir="workers/researcher",    # langgraph.json (+ requirements.txt); the sandbox workspace
     graph_id="researcher",              # graph in langgraph.json
+    worker_dir="workers/researcher",    # langgraph.json (+ requirements.txt); the sandbox workspace
+                                        # None → mount nothing; the code comes from `template`
     secrets={"openai": "OPENAI_API_KEY"},  # stored with `sbx secret set --sandbox`; the VM sees `proxy-managed`
     env={"WORKER_MODEL": "openai:gpt-5.5"},  # extra server env; visible in the VM, never put secrets here
     allow_network=["api.tavily.com"],   # per-sandbox `sbx policy allow network`, on top of the global policy
@@ -73,6 +74,7 @@ WorkerSpec(
     kits=[],                            # sbx kits (`--kit`)
     agent="shell",                      # sbx agent / workload the sandbox is created from
     template=None,                      # prebuilt worker template; skips the dependency install
+                                        # (required with worker_dir=None)
     memory=None, cpus=None,             # sandbox size; None → sbx defaults
     host_port=None,                     # port on host 127.0.0.1; None → a free one
 )
@@ -94,11 +96,11 @@ supervisor (create_deep_agent)              langgraph dev  (workers/researcher)
 
 Starting a worker:
 
-1. `sbx create` with the worker directory as workspace and the server port published on `127.0.0.1` only.
+1. `sbx create` with the worker directory as workspace (none with `worker_dir=None`) and the server port published on `127.0.0.1` only.
 2. `sbx secret set <service> --sandbox <name>` for each secret, read from the host environment.
 3. `sbx policy allow|deny network --sandbox <name>` for each network rule.
 4. Unless a template is given, install the worker venv inside the VM (see below).
-5. `langgraph dev` via a host-held `sbx exec` (sbx has no detached exec), then wait for `/ok`.
+5. `langgraph dev` via a host-held `sbx exec` (sbx has no detached exec), from the worker directory or, with `worker_dir=None`, from `/home/agent/worker` in the template. Then wait for `/ok`.
 
 The supervisor starts a run on the worker and polls it until it finishes. `langgraph dev` keeps threads in memory, so they end with the sandbox.
 
@@ -121,11 +123,17 @@ docker save researcher-worker:1 -o researcher-worker.tar
 sbx template load researcher-worker.tar
 ```
 
+The image also carries the worker's code at `/home/agent/worker`. Add a `.dockerignore` to the worker directory (for example `.env`, `.langgraph_api/`, `__pycache__/`) to keep local files out of it. Two ways to use it:
+
 ```python
-WorkerSpec(..., template="researcher-worker:1")
+# Development: dependencies from the template, code mounted from the host (no rebuild on code changes).
+WorkerSpec(..., worker_dir="workers/researcher", template="researcher-worker:1")
+
+# Isolated: nothing from the host is mounted; the worker runs the code baked into the image.
+WorkerSpec(..., worker_dir=None, template="researcher-worker:1")
 ```
 
-The template holds the dependencies only; the worker directory is still mounted at start, so code changes don't need a rebuild. Rebuild when `requirements.txt` changes.
+Rebuild the image when `requirements.txt` changes, and for `worker_dir=None` also when the code changes.
 
 ## Development
 
@@ -149,12 +157,8 @@ Contributions are welcome! Please feel free to open an issue or submit a pull re
 
 ## Security
 
-Sandboxes are microVMs, which isolate more strongly than containers, but treat this as a development tool rather than a hard multi-tenant boundary. The worker directory is shared read/write with the host. Pass credentials through `secrets` so the sbx proxy injects them and they never enter the VM; anything in `env` is readable inside the sandbox. See [Deep Agents security](https://github.com/langchain-ai/deepagents?tab=security-ov-file).
+Sandboxes are microVMs, which isolate more strongly than containers, but treat this as a development tool rather than a hard multi-tenant boundary. A mounted worker directory is shared read/write with the host; use `worker_dir=None` with a template to share nothing. Pass credentials through `secrets` so the sbx proxy injects them and they never enter the VM; anything in `env` is readable inside the sandbox. See [Deep Agents security](https://github.com/langchain-ai/deepagents?tab=security-ov-file).
 
 ## License
 
 MIT — [LICENSE](LICENSE).
-
-## Acknowledgements
-
-This project started from [deepagents-docker](https://github.com/andybbruno/deepagents-docker) by [andybbruno](https://github.com/andybbruno), which runs Deep Agents commands in Docker containers. Thank you for the groundwork!

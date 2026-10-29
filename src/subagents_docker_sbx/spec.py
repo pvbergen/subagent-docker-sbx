@@ -5,6 +5,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .requirements import WORKER_CODE_DIR
+
 
 @dataclass(frozen=True)
 class WorkerSpec:
@@ -13,9 +15,11 @@ class WorkerSpec:
     Args:
         name: Subagent name the supervisor delegates to.
         description: What the worker does; the supervisor's model reads it to pick a worker.
-        worker_dir: Directory with ``langgraph.json`` (and optionally ``requirements.txt``). It
-            becomes the sandbox workspace, shared read/write with the host.
         graph_id: Graph in ``langgraph.json`` to delegate to.
+        worker_dir: Host directory with ``langgraph.json`` (and optionally ``requirements.txt``).
+            It becomes the sandbox workspace, shared read/write with the host. ``None`` mounts
+            nothing from the host: the worker's code must then be in ``template`` at
+            ``WORKER_CODE_DIR`` (``docker/worker.Dockerfile`` puts it there).
         secrets: sbx secret service name -> host environment variable holding its value, for
             example ``{"openai": "OPENAI_API_KEY"}``. Each value is stored with ``sbx secret set
             --sandbox`` for this sandbox only. The proxy injects it into matching requests; the
@@ -28,7 +32,8 @@ class WorkerSpec:
         kits: sbx kits added with ``--kit`` (references or local directories).
         agent: Built-in sbx agent or v3 workload the sandbox is created from.
         template: Sandbox template (``sbx create --template``) that already contains the worker
-            venv; the dependency install is then skipped. See `subagents_docker_sbx.requirements`.
+            venv; the dependency install is then skipped. Required without ``worker_dir``. See
+            `subagents_docker_sbx.requirements`.
         memory: Sandbox memory, for example ``"2g"``; ``None`` leaves the sbx default.
         cpus: Whole CPUs; ``None`` leaves the sbx default.
         host_port: Port on host 127.0.0.1 for the worker; ``None`` picks a free one.
@@ -36,8 +41,8 @@ class WorkerSpec:
 
     name: str
     description: str
-    worker_dir: str | Path
     graph_id: str
+    worker_dir: str | Path | None = None
     secrets: Mapping[str, str] = field(default_factory=dict)
     env: Mapping[str, str] = field(default_factory=dict)
     allow_network: Sequence[str] = ()
@@ -53,7 +58,19 @@ class WorkerSpec:
         if not self.name.strip():
             msg = "WorkerSpec.name must not be empty"
             raise ValueError(msg)
-        worker_dir = Path(self.worker_dir).resolve()
+        if self.worker_dir is None:
+            # The code is in the template; its langgraph.json can't be checked from the host.
+            if self.template is None:
+                msg = "WorkerSpec without worker_dir needs a template that contains the worker"
+                raise ValueError(msg)
+        else:
+            self._check_worker_dir(Path(self.worker_dir).resolve())
+        clash = set(self.secrets.values()) & set(self.env)
+        if clash:
+            msg = f"env must not set secret variables: {sorted(clash)}"
+            raise ValueError(msg)
+
+    def _check_worker_dir(self, worker_dir: Path) -> None:
         object.__setattr__(self, "worker_dir", worker_dir)
         config_path = worker_dir / "langgraph.json"
         if not config_path.is_file():
@@ -63,12 +80,13 @@ class WorkerSpec:
         if self.graph_id not in graphs:
             msg = f"graph {self.graph_id!r} is not in {config_path} (has: {sorted(graphs)})"
             raise ValueError(msg)
-        clash = set(self.secrets.values()) & set(self.env)
-        if clash:
-            msg = f"env must not set secret variables: {sorted(clash)}"
-            raise ValueError(msg)
 
     @property
-    def path(self) -> Path:
-        """`worker_dir` as a resolved path."""
-        return Path(self.worker_dir)
+    def path(self) -> Path | None:
+        """`worker_dir` as a resolved path, or ``None`` when nothing is mounted."""
+        return None if self.worker_dir is None else Path(self.worker_dir)
+
+    @property
+    def workdir(self) -> str:
+        """Directory inside the sandbox that `langgraph dev` serves the worker from."""
+        return WORKER_CODE_DIR if self.worker_dir is None else str(self.worker_dir)
