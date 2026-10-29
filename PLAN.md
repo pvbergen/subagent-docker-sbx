@@ -85,7 +85,10 @@ live in one place, `subagents_docker_sbx/requirements.py`, so the planned exampl
 `tests/test_subagents_worker.py` (unit with sbx mocked; integration opt-in), test worker in
 `tests/workers/basic/`.
 
-Next: run the integration tests on the sbx host; example Dockerfile; then cleanup before
+Run on the sbx host with `uv sync --group prototype` first: the host-side supervisor needs
+`langchain-openai` (first run: 3 passed, supervisor test failed on exactly that).
+
+Next: rerun the supervisor test; example Dockerfile; then cleanup before
 pushing (remove `prototypes/` once the package covers it, delete leftover templates/kit images).
 
 ## Design to build (proposal, needs the user's OK before implementing)

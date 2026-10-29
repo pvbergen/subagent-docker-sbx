@@ -136,6 +136,9 @@ A worker needs inside its VM (listed in `subagents_docker_sbx/requirements.py`):
 - a venv at `/home/agent/venv` with `deepagents` and `langgraph-cli[inmem]` (`WORKER_REQUIREMENTS`)
 - the worker's own `requirements.txt`, typically the model provider (for example `langchain-openai`)
 
+The supervisor's model runs on the host, so the host needs that model's provider package too
+(for example `langchain-openai` for `openai:` models).
+
 Without `template=`, these are installed on every start. A template that already contains the
 venv (`WorkerSpec(template=...)`) skips the install.
 

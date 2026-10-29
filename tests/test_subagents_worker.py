@@ -279,6 +279,12 @@ def test_worker_port_is_published_on_host_loopback_only(worker: SandboxedWorker)
     reason="set DEEPAGENTS_SBX_LLM=1 and OPENAI_API_KEY to call the model",
 )
 def test_host_supervisor_delegates_to_sandboxed_worker(worker: SandboxedWorker) -> None:
+    # The supervisor's model runs on the host, so its provider package must be installed there
+    # too (the worker's runs in the sandbox, from the worker's requirements.txt).
+    pytest.importorskip(
+        "langchain_openai",
+        reason="the host-side supervisor needs langchain-openai: uv sync --group prototype",
+    )
     from deepagents import create_deep_agent
 
     supervisor = create_deep_agent(
