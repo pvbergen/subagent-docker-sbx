@@ -1,4 +1,4 @@
-# Lint and unit tests on every pull request. sbx is mocked in the unit tests; the integration
+# Lint, unit tests and a Dockerfile lint on every pull request. sbx is mocked in the unit tests; the integration
 # tests (-m sbx) need hardware virtualization and an sbx login, so they skip here.
 name: Tests
 
@@ -39,3 +39,6 @@ jobs:
 
       - name: Unit tests
         run: uv run pytest
+
+      - name: Lint worker Dockerfile
+        run: docker build --check -f docker/worker.Dockerfile tests/workers/basic
